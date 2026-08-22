@@ -248,3 +248,21 @@ def remove_rule(identifier: str) -> bool:
 def get_metric_names() -> list[str]:
     """Return all registered metric names — useful for autocomplete / guide."""
     return sorted(_METRIC_REGISTRY.keys())
+
+
+# ──────────────────────────────────────────────
+#  Plugin probe integration
+# ──────────────────────────────────────────────
+
+def register_plugin_metrics() -> None:
+    """Pull probe entries exposed by discovered plugins into the metric
+    registry. Built-in metrics keep priority; safe to call repeatedly."""
+    try:
+        from nano_logic.plugins import METRIC_PROBES
+    except Exception:
+        return
+    for name, probe in METRIC_PROBES.items():
+        _METRIC_REGISTRY.setdefault(name, probe)
+
+
+register_plugin_metrics()

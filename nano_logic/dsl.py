@@ -11,7 +11,7 @@ from lark.exceptions import LarkError
 from lark.tree import Tree
 from nano_logic.models import Rule, StopRule
 from nano_logic.engine import ACTIVE_RULES
-from nano_logic.plugins import docker_probe
+from nano_logic import plugins as _plugin_registry
 from nano_logic.monitoring.probes import (
     get_all_processes,
     get_process_by_name,
@@ -135,6 +135,27 @@ def _run_cmd(cmd: list[str], timeout: int = 5) -> str:
         return f"Timeout: {cmd[0]} did not respond in {timeout}s"
     except Exception as e:
         return f"Error: {e}"
+
+
+_DOCKER_FALLBACKS = {
+    "docker.ps": "docker_ps_report",
+    "docker.stats": "docker_stats_report",
+    "docker.info": "docker_info_report",
+    "docker.images": "docker_images_report",
+    "docker.containers": "docker_containers_report",
+    "docker.logs": "docker_logs_report",
+    "docker.networks": "docker_networks_report",
+    "docker.volumes": "docker_volumes_report",
+}
+
+
+def _docker_backend_fallback(key: str, children: list) -> str:
+    """Direct docker_probe call, used only when no plugin handler exists."""
+    from nano_logic.plugins import docker_probe
+    fn = getattr(docker_probe, _DOCKER_FALLBACKS[key])
+    if key == "docker.logs":
+        return fn(str(children[0]) if children else "")
+    return fn()
 
 
 # ──────────────────────────────────────────────
@@ -555,29 +576,38 @@ class MetricsTransformer(Transformer):
             return f"Sensor Battery: Error - {e}"
 
     # ── Docker ──
+    # Resolves through the discovered DockerPlugin first; falls back to the
+    # docker_probe backend directly if the plugin registry has no handler,
+    # so the commands keep working even with a broken/absent plugin system.
+    def _docker(self, key: str, children: list) -> str:
+        handler = _plugin_registry.get_command_handler(key)
+        if handler is not None:
+            return handler(*children)
+        return _docker_backend_fallback(key, children)
+
     def docker_ps(self, _children: list) -> str:
-        return docker_probe.docker_ps_report()
+        return self._docker("docker.ps", _children)
 
     def docker_stats(self, _children: list) -> str:
-        return docker_probe.docker_stats_report()
+        return self._docker("docker.stats", _children)
 
     def docker_info(self, _children: list) -> str:
-        return docker_probe.docker_info_report()
+        return self._docker("docker.info", _children)
 
     def docker_images(self, _children: list) -> str:
-        return docker_probe.docker_images_report()
+        return self._docker("docker.images", _children)
 
     def docker_containers(self, _children: list) -> str:
-        return docker_probe.docker_containers_report()
+        return self._docker("docker.containers", _children)
 
     def docker_logs(self, children: list) -> str:
-        return docker_probe.docker_logs_report(str(children[0]))
+        return self._docker("docker.logs", children)
 
     def docker_networks(self, _children: list) -> str:
-        return docker_probe.docker_networks_report()
+        return self._docker("docker.networks", _children)
 
     def docker_volumes(self, _children: list) -> str:
-        return docker_probe.docker_volumes_report()
+        return self._docker("docker.volumes", _children)
 
     # ── Service ──
     def service_list(self, _children: list) -> str:
