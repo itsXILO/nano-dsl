@@ -11,6 +11,7 @@ from lark.exceptions import LarkError
 from lark.tree import Tree
 from nano_logic.models import Rule, StopRule
 from nano_logic.engine import ACTIVE_RULES
+from nano_logic.plugins import docker_probe
 from nano_logic.monitoring.probes import (
     get_all_processes,
     get_process_by_name,
@@ -549,21 +550,10 @@ class MetricsTransformer(Transformer):
 
     # ── Docker ──
     def docker_ps(self, _children: list) -> str:
-        result = _run_cmd([
-            "docker", "ps", "--format", "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"
-        ])
-        if "Command not found" in result:
-            return "Docker: not available"
-        return "Docker Containers:\n" + result
+        return docker_probe.docker_ps_report()
 
     def docker_stats(self, _children: list) -> str:
-        result = _run_cmd([
-            "docker", "stats", "--no-stream", "--format",
-            "table {{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.MemUsage}}"
-        ])
-        if "Command not found" in result:
-            return "Docker: not available"
-        return "Docker Stats:\n" + result
+        return docker_probe.docker_stats_report()
 
     # ── Service ──
     def service_list(self, _children: list) -> str:
