@@ -189,6 +189,207 @@ class TestDslIntegration:
 
 
 # ═══════════════════════════════════════════════
+#  New read-only families — shared fixtures
+# ═══════════════════════════════════════════════
+
+NEW_FAMILIES = {
+    "info": "docker_info_report",
+    "images": "docker_images_report",
+    "containers": "docker_containers_report",
+    "networks": "docker_networks_report",
+    "volumes": "docker_volumes_report",
+}
+
+# keyed by first CLI subcommand word (cmd[1]) -> canned stdout per family
+# (info is a pipe line, the rest are one row per line in `|`-separated CLI --format style)
+CLI_CANNED = {
+    "info": "29.7.2|Ubuntu 24.04|16|17179869184|overlay2|21|7|0|0",
+    "images": "nginx|latest|abc123def|187MiB\nmongo|8|def456abc|800MiB",
+    "ps": "id1|web|nginx|Up 1 min|\nid2|db|mongo|Exited (0) 2h ago|",
+    "network": "bridge|bridge|local\nhost|host|local",
+    "volume": "data-vol|local",
+}
+
+
+def _fake_cli(stdout_by_word: dict[str, str], returncode: int = 0, stderr: str = ""):
+    """Build a subprocess.run replacement dispatching on cmd[1] (subcommand)."""
+    def fake_run(cmd, capture_output, text, timeout):
+        word = cmd[1] if len(cmd) > 1 else ""
+        stdout = stdout_by_word.get(word, "")
+        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
+    return fake_run
+
+
+# ═══════════════════════════════════════════════
+#  New families — graceful fallbacks
+# ═══════════════════════════════════════════════
+
+class TestNewFamiliesNotInstalled:
+    @pytest.mark.parametrize("report", list(NEW_FAMILIES.values()))
+    def test_returns_not_available(self, report, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: None)
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        assert getattr(docker_probe, report)() == NOT_AVAILABLE
+
+    def test_logs_not_installed(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: None)
+        assert docker_probe.docker_logs_report("web") == NOT_AVAILABLE
+
+
+class TestNewFamiliesDaemonUnreachable:
+    @pytest.mark.parametrize("report", list(NEW_FAMILIES.values()))
+    def test_returns_daemon_unreachable(self, report, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run",
+                            _fake_cli({}, returncode=1,
+                                      stderr="Cannot connect to the Docker daemon"))
+        assert getattr(docker_probe, report)() == DAEMON_UNREACHABLE
+
+    def test_logs_daemon_unreachable(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run",
+                            _fake_cli({}, returncode=1,
+                                      stderr="Cannot connect to the Docker daemon"))
+        assert docker_probe.docker_logs_report("web") == DAEMON_UNREACHABLE
+
+
+class TestNewFamiliesCliParsing:
+    """Happy path: SDK missing, CLI returns canned rows — verify parsing."""
+
+    @pytest.fixture
+    def cli_only(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+
+    def test_info(self, cli_only, monkeypatch):
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli(CLI_CANNED))
+        out = docker_probe.docker_info_report()
+        assert "29.7.2" in out and "overlay2" in out and "16" in out
+        assert out.startswith("Docker Info:")
+
+    def test_images(self, cli_only, monkeypatch):
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli(CLI_CANNED))
+        out = docker_probe.docker_images_report()
+        assert out.startswith("Docker Images (2):")
+        assert "nginx" in out and "mongo" in out and "187MiB" in out
+
+    def test_containers_includes_stopped(self, cli_only, monkeypatch):
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli(CLI_CANNED))
+        out = docker_probe.docker_containers_report()
+        assert "(all) (2)" in out
+        assert "web" in out and "Exited (0) 2h ago" in out
+
+    def test_networks(self, cli_only, monkeypatch):
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli(CLI_CANNED))
+        out = docker_probe.docker_networks_report()
+        assert out.startswith("Docker Networks (2):")
+        assert "bridge" in out and "local" in out
+
+    def test_volumes(self, cli_only, monkeypatch):
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli(CLI_CANNED))
+        out = docker_probe.docker_volumes_report()
+        assert out.startswith("Docker Volumes (1):")
+        assert "data-vol" in out and "local" in out
+
+    def test_logs_combines_stderr_stream(self, cli_only, monkeypatch):
+        """Container apps logging to stderr still show up (rc == 0)."""
+        monkeypatch.setattr(
+            docker_probe.subprocess, "run",
+            _fake_cli({"logs": "stdout line"}, stderr="stderr line"),
+        )
+        out = docker_probe.docker_logs_report("web")
+        assert "stdout line" in out and "stderr line" in out
+        assert "Docker Logs 'web'" in out
+
+
+class TestNewFamiliesEmptyAndErrors:
+    def test_empty_results_are_graceful(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli({}))
+        assert "none found" in docker_probe.docker_images_report()
+        assert "none found" in docker_probe.docker_containers_report()
+        assert "none found" in docker_probe.docker_networks_report()
+        assert "none found" in docker_probe.docker_volumes_report()
+
+    def test_logs_missing_container(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run",
+                            _fake_cli({}, returncode=1,
+                                      stderr="Error: No such container: ghost"))
+        out = docker_probe.docker_logs_report("ghost")
+        assert "no such container 'ghost'" in out
+
+    def test_logs_empty_output(self, monkeypatch):
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run", _fake_cli({"logs": ""}))
+        assert "no log output" in docker_probe.docker_logs_report("quiet")
+
+    def test_permission_denied_maps_to_unreachable(self, monkeypatch):
+        """Socket permission issues degrade gracefully, never crash."""
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_probe, "_sdk_client", lambda: None)
+        monkeypatch.setattr(docker_probe.subprocess, "run",
+                            _fake_cli({}, returncode=1,
+                                      stderr="permission denied while trying to connect "
+                                             "to the Docker daemon socket"))
+        for report in NEW_FAMILIES.values():
+            assert getattr(docker_probe, report)() == DAEMON_UNREACHABLE
+        assert docker_probe.docker_logs_report("web") == DAEMON_UNREACHABLE
+
+
+# ═══════════════════════════════════════════════
+#  New families — grammar + DSL integration
+# ═══════════════════════════════════════════════
+
+class TestNewDslIntegration:
+    @pytest.mark.parametrize("cmd,tree_name", [
+        ("docker.info", "docker_info"),
+        ("docker.images", "docker_images"),
+        ("docker.containers", "docker_containers"),
+        ("docker.logs mybox", "docker_logs"),
+        ("docker.networks", "docker_networks"),
+        ("docker.volumes", "docker_volumes"),
+    ])
+    def test_grammar_parses(self, cmd, tree_name):
+        from nano_logic.dsl import parse_command
+        assert parse_command(cmd).data == tree_name
+
+    @pytest.mark.parametrize("cmd,report", [
+        ("docker.info", "docker_info_report"),
+        ("docker.images", "docker_images_report"),
+        ("docker.containers", "docker_containers_report"),
+        ("docker.networks", "docker_networks_report"),
+        ("docker.volumes", "docker_volumes_report"),
+    ])
+    def test_transformer_routes_to_backend(self, cmd, report, monkeypatch):
+        marker = f"STUB::{report}"
+        monkeypatch.setattr(docker_probe, report, lambda: marker)
+        assert execute_command(cmd) == marker
+
+    def test_transformer_passes_log_target(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(docker_probe, "docker_logs_report",
+                            lambda name: seen.setdefault("name", name) or "ok")
+        execute_command("docker.logs mybox")
+        assert seen["name"] == "mybox"
+
+    def test_all_new_commands_return_strings_with_broken_backend(self, monkeypatch):
+        """Every entry point survives a completely broken environment."""
+        monkeypatch.setattr(docker_probe.shutil, "which", lambda _: None)
+        monkeypatch.setattr(docker_probe, "_sdk_client",
+                            lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+        for cmd in ("docker.info", "docker.images", "docker.containers",
+                    "docker.logs x", "docker.networks", "docker.volumes"):
+            result = execute_command(cmd)
+            assert isinstance(result, str) and NOT_AVAILABLE in result
+
+
+# ═══════════════════════════════════════════════
 #  Live check — only runs when Docker actually works locally
 # ═══════════════════════════════════════════════
 
@@ -205,3 +406,15 @@ class TestLiveDocker:
     def test_live_stats(self, require_live_docker):
         out = docker_probe.docker_stats_report()
         assert isinstance(out, str) and out.strip()
+
+    @pytest.mark.parametrize("report", list(NEW_FAMILIES.values()))
+    def test_live_new_families(self, report, require_live_docker):
+        out = getattr(docker_probe, report)()
+        assert isinstance(out, str) and out.strip()
+
+    def test_live_logs(self, require_live_docker):
+        rows = docker_probe.get_containers()
+        if not isinstance(rows, list) or not rows:
+            pytest.skip("no running containers to read logs from")
+        out = docker_probe.docker_logs_report(rows[0]["name"])
+        assert isinstance(out, str) and f"'{rows[0]['name']}'" in out

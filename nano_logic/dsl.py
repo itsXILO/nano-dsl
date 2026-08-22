@@ -85,8 +85,14 @@ sensor_cmd: "sensor" "." "temp"    -> sensor_temp
           | "sensor" "." "fans"    -> sensor_fans
           | "sensor" "." "battery" -> sensor_battery
 
-docker_cmd: "docker" "." "ps"      -> docker_ps
-          | "docker" "." "stats"   -> docker_stats
+docker_cmd: "docker" "." "ps"         -> docker_ps
+          | "docker" "." "stats"      -> docker_stats
+          | "docker" "." "info"       -> docker_info
+          | "docker" "." "images"     -> docker_images
+          | "docker" "." "containers" -> docker_containers
+          | "docker" "." "logs" CMD   -> docker_logs
+          | "docker" "." "networks"   -> docker_networks
+          | "docker" "." "volumes"    -> docker_volumes
 
 service_cmd: "service" "." "list"          -> service_list
            | "service" "." "status" CMD    -> service_status
@@ -555,6 +561,24 @@ class MetricsTransformer(Transformer):
     def docker_stats(self, _children: list) -> str:
         return docker_probe.docker_stats_report()
 
+    def docker_info(self, _children: list) -> str:
+        return docker_probe.docker_info_report()
+
+    def docker_images(self, _children: list) -> str:
+        return docker_probe.docker_images_report()
+
+    def docker_containers(self, _children: list) -> str:
+        return docker_probe.docker_containers_report()
+
+    def docker_logs(self, children: list) -> str:
+        return docker_probe.docker_logs_report(str(children[0]))
+
+    def docker_networks(self, _children: list) -> str:
+        return docker_probe.docker_networks_report()
+
+    def docker_volumes(self, _children: list) -> str:
+        return docker_probe.docker_volumes_report()
+
     # ── Service ──
     def service_list(self, _children: list) -> str:
         """List running systemd services."""
@@ -587,7 +611,8 @@ class MetricsTransformer(Transformer):
             "  Network:    net.interfaces, net.bandwidth, net.connections, net.ports, net.dns <host>\n"
             "  System:     system.uptime, system.info, system.processes, system.users, system.load\n"
             "  Sensors:    sensor.temp, sensor.fans, sensor.battery\n"
-            "  Docker:     docker.ps, docker.stats\n"
+            "  Docker:     docker.ps, docker.stats, docker.info, docker.images,\n"
+            "              docker.containers, docker.logs <name>, docker.networks, docker.volumes\n"
             "  Services:   service.list, service.status <name>\n"
             "  Utility:    clear, help, rules, status, history, guide\n\n"
             "  Alerts:     <name>: alert <metric> <op> <val> -> <action>\n"
