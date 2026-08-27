@@ -198,9 +198,43 @@ def evaluate_active_rules(cooldown_seconds: float = DEFAULT_ALERT_COOLDOWN_SECON
             continue
 
         _last_triggered_at[rule.id] = now
+        _dispatch_action(rule, current_val)
         triggered.append((rule, current_val))
 
     return triggered
+
+
+def _dispatch_action(rule: Rule, current_val: float) -> bool | None:
+    """Fire the plugin-registered action handler for a triggered rule.
+
+    Built-in actions (e.g. "log") have no registered handler and are
+    ignored here — their existing behavior elsewhere is untouched. Handler
+    failures are swallowed: alerting must never crash rule evaluation.
+    """
+    try:
+        from nano_logic.plugins import get_action_handler
+
+        handler = get_action_handler(rule.action)
+        if handler is None:
+            return None
+        context = {
+            "rule_name": rule.name or f"rule_{rule.id}",
+            "metric": rule.metric,
+            "operator": rule.operator,
+            "threshold": rule.threshold,
+            "value": current_val,
+            "action": rule.action,
+            "message": (
+                f"[ALERT] {rule.metric} = {current_val:.1f} "
+                f"(threshold {rule.operator} {rule.threshold:g}) "
+                f"— rule '{rule.name or f'rule_{rule.id}'}'"
+            ),
+        }
+        result = handler(context)
+        return bool(result)
+    except Exception:  # noqa: BLE001 — notification issues are non-fatal
+        logger.exception("Action '%s' failed for rule %s", rule.action, rule.id)
+        return False
 
 
 # ──────────────────────────────────────────────
