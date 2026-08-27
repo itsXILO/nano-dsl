@@ -13,12 +13,14 @@ directly, so new plugins drop in without touching core code.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from nano_logic.plugins.base import PluginBase
 
 PLUGINS: dict[str, PluginBase] = {}
-COMMAND_HANDLERS: dict[str, callable] = {}
-METRIC_PROBES: dict[str, callable] = {}
-ACTION_HANDLERS: dict[str, callable] = {}
+COMMAND_HANDLERS: dict[str, Callable] = {}
+METRIC_PROBES: dict[str, Callable] = {}
+ACTION_HANDLERS: dict[str, Callable] = {}
 
 
 def register_plugin(plugin: PluginBase) -> None:
@@ -36,12 +38,12 @@ def register_plugin(plugin: PluginBase) -> None:
         pass
 
 
-def get_command_handler(key: str) -> callable | None:
+def get_command_handler(key: str) -> Callable | None:
     """Resolve a dotted command key ("docker.ps") to its handler, or None."""
     return COMMAND_HANDLERS.get(key)
 
 
-def get_action_handler(name: str) -> callable | None:
+def get_action_handler(name: str) -> Callable | None:
     """Resolve an alert action name ("slack") to its handler, or None.
 
     Unknown names (like the built-in "log") simply return None — callers

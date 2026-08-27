@@ -1,5 +1,8 @@
 """Plugin base module that defines the Plugin contract."""
-from typing import Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
+
+if TYPE_CHECKING:
+    from nano_logic.dashboard import SystemDashboardApp
 
 # Typing alias for readability
 ProbeCallable = Callable[..., Optional[float]]
@@ -30,7 +33,7 @@ class PluginBase:
     action_registry: Dict[str, Callable[[dict], bool]] = {}
     transformer_hooks: Dict[str, Callable] = {}
 
-    def register(self, app: "DashboardApp | None" = None) -> None:
+    def register(self, app: "Optional[SystemDashboardApp]" = None) -> None:
         """
         Called by the discovery flow when the plugin is registered.
         Plugins should override this method to:

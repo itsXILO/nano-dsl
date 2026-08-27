@@ -8,6 +8,7 @@ import subprocess
 
 import pytest
 
+from nano_logic.dsl import execute_command
 from nano_logic.plugins import docker_probe
 from nano_logic.plugins.docker_probe import (
     DAEMON_UNREACHABLE,
@@ -18,8 +19,6 @@ from nano_logic.plugins.docker_probe import (
     format_containers,
     format_stats,
 )
-from nano_logic.dsl import execute_command
-
 
 # ═══════════════════════════════════════════════
 #  Pure formatting helpers

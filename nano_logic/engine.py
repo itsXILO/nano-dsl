@@ -2,8 +2,11 @@
 import json
 import os
 import time
-import psutil
 from dataclasses import asdict
+from typing import Callable
+
+import psutil
+
 from nano_logic.logging_config import configure_logging
 from nano_logic.models import Rule
 from nano_logic.paths import get_rules_file
@@ -45,10 +48,10 @@ def load_rules() -> None:
 #  for both dashboard queries AND alert rules
 # ──────────────────────────────────────────────
 
-_METRIC_REGISTRY: dict[str, callable] = {}
+_METRIC_REGISTRY: dict[str, Callable] = {}
 
 
-def _register_metric(name: str, fn: callable) -> None:
+def _register_metric(name: str, fn: Callable) -> None:
     """Register a metric so it's available for both queries and alerts."""
     _METRIC_REGISTRY[name] = fn
 

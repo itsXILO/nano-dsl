@@ -1,17 +1,20 @@
 """Minimal DSL parser/executor for system utilization commands."""
 from __future__ import annotations
+
 import os
-import time
 import platform
 import socket
 import subprocess
+import time
+
 import psutil
 from lark import Lark, Transformer
 from lark.exceptions import LarkError
 from lark.tree import Tree
-from nano_logic.models import Rule, StopRule
-from nano_logic.engine import ACTIVE_RULES
+
 from nano_logic import plugins as _plugin_registry
+from nano_logic.engine import ACTIVE_RULES
+from nano_logic.models import Rule, StopRule
 from nano_logic.monitoring.probes import (
     get_all_processes,
     get_process_by_name,

@@ -30,8 +30,9 @@ def discover_plugins() -> list[PluginBase]:
                 and obj is not PluginBase
                 and getattr(obj, "__module__", "") == module.__name__
             ]
-            if hasattr(module, "Plugin"):
-                candidates = [getattr(module, "Plugin")]
+            plugin_cls = getattr(module, "Plugin", None)
+            if plugin_cls is not None:
+                candidates = [plugin_cls]
             for plugin_cls in candidates:
                 plugin = plugin_cls()
                 plugins.register_plugin(plugin)

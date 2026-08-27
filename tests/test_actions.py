@@ -5,21 +5,22 @@ payload formatting (generic/Discord/Slack), unreachable-endpoint failure
 paths, and missing-config no-crash behavior.
 """
 import json
-
-import pytest
 import urllib.error
 
+import pytest
+
 from nano_logic import plugins as registry
+from nano_logic.engine import (
+    _METRIC_REGISTRY,
+    ACTIVE_RULES,
+    _dispatch_action,
+    _last_triggered_at,
+    evaluate_active_rules,
+)
+from nano_logic.models import Rule
 from nano_logic.plugins.discord_plugin import DiscordActionPlugin
 from nano_logic.plugins.slack_plugin import SlackActionPlugin
 from nano_logic.plugins.webhook_plugin import WebhookActionPlugin
-
-from nano_logic.engine import (
-    ACTIVE_RULES, _dispatch_action, evaluate_active_rules,
-    fetch_metric_value, _METRIC_REGISTRY, _last_triggered_at,
-)
-from nano_logic.models import Rule
-
 
 CONTEXT = {
     "rule_name": "test_rule",

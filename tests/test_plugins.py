@@ -9,13 +9,11 @@ Proves that:
 import pytest
 
 from nano_logic import plugins as registry
+from nano_logic.dsl import execute_command
+from nano_logic.engine import _METRIC_REGISTRY, fetch_metric_value, register_plugin_metrics
 from nano_logic.plugins import docker_probe
 from nano_logic.plugins.base import PluginBase
 from nano_logic.plugins.docker_plugin import DockerPlugin
-
-from nano_logic.dsl import execute_command
-from nano_logic.engine import _METRIC_REGISTRY, fetch_metric_value, register_plugin_metrics
-
 
 # ═══════════════════════════════════════════════
 #  Discovery & registration

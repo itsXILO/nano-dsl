@@ -1,22 +1,25 @@
 """Textual terminal dashboard showing system metrics and logs."""
 from __future__ import annotations
+
 import asyncio
-import textwrap
-from datetime import datetime
-import psutil
+import shutil
 import subprocess
 import sys
-import shutil
+import textwrap
+from datetime import datetime
+
+import psutil
 from lark.exceptions import LarkError
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, Log, Static
-from textual import events
+
 from nano_logic.dsl import execute_command
-from nano_logic.models import Rule, StopRule
-from nano_logic.engine import ACTIVE_RULES, add_rule, remove_rule, load_rules
+from nano_logic.engine import ACTIVE_RULES, add_rule, load_rules, remove_rule
 from nano_logic.logging_config import configure_logging
+from nano_logic.models import Rule, StopRule
 from nano_logic.monitoring.probes import (
     get_disk_free_bytes,
     get_disk_usage_percent,
